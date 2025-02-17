@@ -1,147 +1,111 @@
-# Detectando Objetos em tem real com OpenCV deep learning library
-
-# Importação das Bibliotecas
 import numpy as np
 import cv2
 import time
-import os
-
-# Necessário para criar o arquivo contendo os objectos detectados
+import pyttsx3
+import threading
 from csv import DictWriter
+import subprocess
 
-# Defini qual camera será utilizada na captura
+# Inicializar o pyttsx3 com o driver 'espeak' para garantir compatibilidade no Linux
+engine = pyttsx3.init(driverName='espeak')
+
+# Definir a configuração da fala
+engine.setProperty('rate', 250)  # Ajuste a velocidade da fala
+engine.setProperty('volume', 1)  # Ajuste o volume (0.0 a 1.0)
+
+# Função para falar o nome do objeto
+def speak(text):
+    subprocess.run(["espeak", "-s", "150", "-v", "pt+f5", text])  # Velocidade reduzida e voz feminina
+
+# Definir qual câmera será utilizada na captura
 camera = cv2.VideoCapture(0)
-#camera = cv2.
 
 # Cria variáveis para captura de altura e largura
 h, w = None, None
 
-# Carrega o arquivos com o nome dos objetos que o arquivo foi treinado para detectar
+# Carrega o arquivo com os nomes dos objetos que o arquivo foi treinado para detectar
 with open('yoloDados/YoloNames.names') as f:
-#with open('/home/andressa/Documentos/projetos/Siscoutto/OpenCVScript-master/OpenCVYolo/yoloDados/YoloNames.names') as f:
-    # cria uma lista com todos os nomes
     labels = [line.strip() for line in f]
 
-# carrega os arquivos treinados pelo framework
-network = cv2.dnn.readNetFromDarknet('yoloDados/yolov3.cfg',
-                                     'yoloDados/yolov3.weights')
+# Carrega os arquivos treinados pelo framework
+network = cv2.dnn.readNetFromDarknet('yoloDados/yolov3.cfg', 'yoloDados/yolov3.weights')
 
-#base_path = os.path.dirname(os.path.abspath(__file__))
-#cfg_path = os.path.join(base_path, "yoloDados", "yolov3.cfg")
-#weights_path = os.path.join(base_path, "yoloDados", "yolov3.weights")
-
-#network = cv2.dnn.readNetFromDarknet(cfg_path, weights_path)
-
-
-
-# captura um lista com todos os nomes de objetos treinados pelo framework
+# Captura uma lista com todos os nomes de objetos treinados pelo framework
 layers_names_all = network.getLayerNames()
-
 output_layers = network.getUnconnectedOutLayers().flatten()  # Garante que é um array 1D
-
-# Ajusta os índices (0-indexed)
 output_layers_adjusted = output_layers - 1
-
-# Obtém os nomes das camadas de saída
 layers_names_output = [layers_names_all[int(i)] for i in output_layers_adjusted]
-
-# Obtendo apenas nomes de camadas de saída que precisamos do algoritmo YOLOv3
-# com função que retorna índices de camadas com saídas desconectadas
-#layers_names_output = \
-#    [layers_names_all[i[0] -1] for i in network.getUnconnectedOutLayers()]
 
 # Definir probabilidade mínima para eliminar previsões fracas
 probability_minimum = 0.5
+threshold = 0.3  # Limite para filtrar caixas delimitadoras fracas com supressão não máxima
 
-# Definir limite para filtrar caixas delimitadoras fracas
-# com supressão não máxima
-threshold = 0.3
-
-# Gera cores aleatórias nas caixas de cada objeto detectados
+# Gera cores aleatórias nas caixas de cada objeto detectado
 colours = np.random.randint(0, 255, size=(len(labels), 3), dtype='uint8')
 
-# Loop de captura e detecção dos objetos
+# Variável para controlar a frequência das falas
+last_spoken = time.time()
 
+# Loop de captura e detecção dos objetos
 with open('teste.csv', 'w') as arquivo:
     cabecalho = ['Detectado', 'Acuracia']
     escritor_csv = DictWriter(arquivo, fieldnames=cabecalho)
     escritor_csv.writeheader()
+
     while True:
-        # Captura da camera frame por frame
         _, frame = camera.read()
 
         if w is None or h is None:
-            # Fatiar apenas dois primeiros elementos da tupla
             h, w = frame.shape[:2]
 
-        # A forma resultante possui número de quadros, número de canais, largura e altura
-        # E.G.:
-        blob = cv2.dnn.blobFromImage(frame, 1 / 255.0, (416, 416),
-                                     swapRB=True, crop=False)
-
-        # Implementando o passe direto com nosso blob e somente através das camadas de saída
-        # Cálculo ao mesmo tempo, tempo necessário para o encaminhamento
-        network.setInput(blob)  # definindo blob como entrada para a rede
+        # Processamento de imagem
+        blob = cv2.dnn.blobFromImage(frame, 1 / 255.0, (416, 416), swapRB=True, crop=False)
+        network.setInput(blob)
         start = time.time()
         output_from_network = network.forward(layers_names_output)
         end = time.time()
 
-        # Mostrando tempo gasto para um único quadro atual
-        print('Tempo gasto atual {:.5f} segundos'.format(end - start))
-
-        # Preparando listas para caixas delimitadoras detectadas,
-
+        # Listas para detectar objetos
         bounding_boxes = []
         confidences = []
         class_numbers = []
 
-        # Passando por todas as camadas de saída após o avanço da alimentação
-        # Fase de detecção dos objetos
         for result in output_from_network:
             for detected_objects in result:
                 scores = detected_objects[5:]
                 class_current = np.argmax(scores)
                 confidence_current = scores[class_current]
 
-                # Eliminando previsões fracas com probabilidade mínima
                 if confidence_current > probability_minimum:
                     box_current = detected_objects[0:4] * np.array([w, h, w, h])
                     x_center, y_center, box_width, box_height = box_current
                     x_min = int(x_center - (box_width / 2))
                     y_min = int(y_center - (box_height / 2))
 
-                    # Adicionando resultados em listas preparadas
-                    bounding_boxes.append([x_min, y_min,
-                                           int(box_width), int(box_height)])
+                    bounding_boxes.append([x_min, y_min, int(box_width), int(box_height)])
                     confidences.append(float(confidence_current))
                     class_numbers.append(class_current)
 
-        results = cv2.dnn.NMSBoxes(bounding_boxes, confidences,
-                                   probability_minimum, threshold)
-
-        # Verificando se existe pelo menos um objeto detectado
+        results = cv2.dnn.NMSBoxes(bounding_boxes, confidences, probability_minimum, threshold)
 
         if len(results) > 0:
             for i in results.flatten():
                 x_min, y_min = bounding_boxes[i][0], bounding_boxes[i][1]
                 box_width, box_height = bounding_boxes[i][2], bounding_boxes[i][3]
                 colour_box_current = colours[class_numbers[i]].tolist()
-                cv2.rectangle(frame, (x_min, y_min),
-                              (x_min + box_width, y_min + box_height),
-                              colour_box_current, 2)
+                cv2.rectangle(frame, (x_min, y_min), (x_min + box_width, y_min + box_height), colour_box_current, 2)
 
-                # Preparando texto com rótulo e acuracia para o objeto detectado
-                text_box_current = '{}: {:.4f}'.format(labels[int(class_numbers[i])],
-                                                       confidences[i])
+                # Preparando texto com rótulo e acurácia para o objeto detectado
+                text_box_current = '{}: {:.4f}'.format(labels[int(class_numbers[i])], confidences[i])
+                cv2.putText(frame, text_box_current, (x_min, y_min - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour_box_current, 2)
 
-                # Coloca o texto nos objetos detectados
-                cv2.putText(frame, text_box_current, (x_min, y_min - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour_box_current, 2)
-
-                escritor_csv.writerow(
-                    {"Detectado": text_box_current.split(':')[0], "Acuracia": text_box_current.split(':')[1]})
-
+                escritor_csv.writerow({"Detectado": text_box_current.split(':')[0], "Acuracia": text_box_current.split(':')[1]})
                 print(text_box_current.split(':')[0] + " - " + text_box_current.split(':')[1])
+
+                # Gerar o som do nome do objeto detectado, mas com um delay para evitar fala repetida
+                if time.time() - last_spoken > 1:  # Falar a cada 1 segundo (ajuste conforme necessário)
+                    threading.Thread(target=speak, args=(labels[int(class_numbers[i])],)).start()  # Falar em thread separada
+                    last_spoken = time.time()
 
         cv2.namedWindow('YOLO v3 WebCamera', cv2.WINDOW_NORMAL)
         cv2.imshow('YOLO v3 WebCamera', frame)
