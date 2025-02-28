@@ -1,3 +1,5 @@
 OpenCVYolo/yoloDados/yolov3.weights filter=lfs diff=lfs merge=lfs -text
 *.so filter=lfs diff=lfs merge=lfs -text
 OpenCVYolo filter=lfs diff=lfs merge=lfs -text
+ImageComparisonSimilarity.py filter=lfs diff=lfs merge=lfs -text
+Opencv_Contador_faces.pyScriptPython filter=lfs diff=lfs merge=lfs -text
