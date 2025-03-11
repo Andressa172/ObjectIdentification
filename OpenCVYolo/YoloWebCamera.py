@@ -3,7 +3,7 @@ import cv2
 import time
 import pyttsx3
 import threading
-from csv import DictWriter
+from csv import DictWriter 
 import subprocess
 
 # Inicializar o pyttsx3 com o driver 'espeak' para garantir compatibilidade no Linux
